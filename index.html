@@ -14,36 +14,29 @@ canvas {
     display: block;
     image-rendering: pixelated;
 }
-#ui {
+#inventory {
     position: fixed;
     bottom: 10px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
-    gap: 10px;
+    gap: 6px;
 }
-.btn {
-    width: 60px;
-    height: 60px;
+.slot {
+    width: 40px;
+    height: 40px;
+    border: 2px solid #000;
     background: rgba(0,0,0,0.4);
-    color: white;
-    font-size: 20px;
-    border-radius: 10px;
-    text-align: center;
-    line-height: 60px;
-    user-select: none;
+}
+.slot.active {
+    border-color: yellow;
 }
 </style>
 </head>
 <body>
 
 <canvas id="game"></canvas>
-
-<div id="ui">
-    <div class="btn" id="left">◀</div>
-    <div class="btn" id="jump">▲</div>
-    <div class="btn" id="right">▶</div>
-</div>
+<div id="inventory"></div>
 
 <script>
 const canvas = document.getElementById("game");
@@ -52,132 +45,132 @@ canvas.width = innerWidth;
 canvas.height = innerHeight;
 
 const TILE = 32;
-const WORLD_W = 200;
-const WORLD_H = 100;
+const WORLD_W = 300;
+const WORLD_H = 120;
 
 /* ===== TEXTURAS ===== */
-const textures = {
-    grass: "#3CB043",
-    dirt: "#8B4513",
-    stone: "#777"
-};
+const images = {};
+function load(name, data){
+    const i = new Image();
+    i.src = "data:image/png;base64,"+data;
+    images[name]=i;
+}
+
+/* === TEXTURAS EMBUTIDAS === */
+load("player","<?=STEVE_BASE64?>");
+load("grass","<?=GRASS_BASE64?>");
+load("dirt","<?=DIRT_BASE64?>");
+load("stone","<?=STONE_BASE64?>");
+load("wood","<?=WOOD_BASE64?>");
+load("leaves","<?=LEAVES_BASE64?>");
+load("coal","<?=COAL_BASE64?>");
 
 /* ===== MUNDO ===== */
-const world = [];
-for (let y = 0; y < WORLD_H; y++) {
-    world[y] = [];
-    for (let x = 0; x < WORLD_W; x++) {
-        if (y > 50) world[y][x] = "stone";
-        else if (y === 50) world[y][x] = "grass";
-        else if (y > 45) world[y][x] = "dirt";
-        else world[y][x] = null;
+const world=[];
+for(let y=0;y<WORLD_H;y++){
+    world[y]=[];
+    for(let x=0;x<WORLD_W;x++){
+        let h=60+Math.sin(x*0.15)*5+Math.random()*3;
+        if(y>h+10) world[y][x]="stone";
+        else if(y>h+6) world[y][x]="dirt";
+        else if(y>=h) world[y][x]="grass";
+        else world[y][x]=null;
     }
 }
 
-/* ===== PLAYER (STEVE 2D) ===== */
-const player = {
-    x: 100,
-    y: 0,
-    w: 24,
-    h: 32,
-    vx: 0,
-    vy: 0,
-    onGround: false
-};
-
-/* ===== INPUT ===== */
-const keys = {};
-addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
-
-/* ===== MOBILE ===== */
-document.getElementById("left").ontouchstart = () => keys["a"] = true;
-document.getElementById("left").ontouchend = () => keys["a"] = false;
-document.getElementById("right").ontouchstart = () => keys["d"] = true;
-document.getElementById("right").ontouchend = () => keys["d"] = false;
-document.getElementById("jump").ontouchstart = () => {
-    if (player.onGround) player.vy = -10;
-};
-
-/* ===== MOUSE ===== */
-canvas.addEventListener("mousedown", e => {
-    const wx = Math.floor((e.clientX + camX) / TILE);
-    const wy = Math.floor((e.clientY + camY) / TILE);
-    if (e.button === 0) world[wy][wx] = null;
-});
-canvas.addEventListener("contextmenu", e => {
-    e.preventDefault();
-    const wx = Math.floor((e.clientX + camX) / TILE);
-    const wy = Math.floor((e.clientY + camY) / TILE);
-    world[wy][wx] = "dirt";
-});
-
-/* ===== CÂMERA ===== */
-let camX = 0, camY = 0;
-
-/* ===== COLISÃO ===== */
-function solid(x, y) {
-    return world[y] && world[y][x];
+/* ===== ÁRVORES ===== */
+for(let i=0;i<80;i++){
+    let x=Math.floor(Math.random()*WORLD_W);
+    let y=0;
+    while(!world[y][x]) y++;
+    for(let t=1;t<4;t++) world[y-t][x]="wood";
+    for(let lx=-2;lx<=2;lx++)
+        for(let ly=-4;ly<=-2;ly++)
+            if(Math.random()>0.2) world[y+ly][x+lx]="leaves";
 }
 
+/* ===== PLAYER ===== */
+const player={x:200,y:0,w:24,h:32,vx:0,vy:0,onGround:false};
+
+/* ===== INVENTÁRIO ===== */
+const blocks=["dirt","wood","stone"];
+let selected=0;
+const inv=document.getElementById("inventory");
+blocks.forEach((b,i)=>{
+    let s=document.createElement("div");
+    s.className="slot"+(i==0?" active":"");
+    s.style.backgroundImage=`url(${images[b]?.src})`;
+    inv.appendChild(s);
+});
+
+/* ===== INPUT ===== */
+const keys={};
+addEventListener("keydown",e=>{
+    keys[e.key.toLowerCase()]=true;
+    if(e.key=="1") selected=0;
+    if(e.key=="2") selected=1;
+});
+addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
+
+/* ===== MOUSE ===== */
+canvas.onmousedown=e=>{
+    let wx=Math.floor((e.clientX+camX)/TILE);
+    let wy=Math.floor((e.clientY+camY)/TILE);
+    if(e.button==0) world[wy][wx]=null;
+};
+canvas.oncontextmenu=e=>{
+    e.preventDefault();
+    let wx=Math.floor((e.clientX+camX)/TILE);
+    let wy=Math.floor((e.clientY+camY)/TILE);
+    if(!world[wy][wx]) world[wy][wx]=blocks[selected];
+};
+
+/* ===== CÂMERA ===== */
+let camX=0,camY=0;
+const solid=(x,y)=>world[y]&&world[y][x];
+
 /* ===== LOOP ===== */
-function update() {
-    /* MOVIMENTO */
-    if (keys["a"]) player.vx = -3;
-    else if (keys["d"]) player.vx = 3;
-    else player.vx *= 0.8;
+function update(){
+    if(keys["a"]) player.vx=-3;
+    else if(keys["d"]) player.vx=3;
+    else player.vx*=0.8;
 
-    if (keys["w"] && player.onGround) player.vy = -10;
+    if(keys["w"]&&player.onGround) player.vy=-10;
+    player.vy+=0.5;
 
-    player.vy += 0.5;
+    player.x+=player.vx;
+    player.y+=player.vy;
 
-    /* X */
-    player.x += player.vx;
-    if (solid(Math.floor(player.x / TILE), Math.floor(player.y / TILE)))
-        player.x -= player.vx;
+    let bx=Math.floor(player.x/TILE);
+    let by=Math.floor((player.y+player.h)/TILE);
+    if(solid(bx,by)){
+        player.y=by*TILE-player.h;
+        player.vy=0;
+        player.onGround=true;
+    } else player.onGround=false;
 
-    /* Y */
-    player.y += player.vy;
-    if (solid(Math.floor(player.x / TILE), Math.floor((player.y + player.h) / TILE))) {
-        player.y = Math.floor((player.y + player.h) / TILE) * TILE - player.h;
-        player.vy = 0;
-        player.onGround = true;
-    } else player.onGround = false;
-
-    /* CÂMERA */
-    camX = player.x - canvas.width / 2;
-    camY = player.y - canvas.height / 2;
+    camX=player.x-canvas.width/2;
+    camY=player.y-canvas.height/2;
 
     draw();
     requestAnimationFrame(update);
 }
 
-/* ===== DESENHO ===== */
-function draw() {
+/* ===== DRAW ===== */
+function draw(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    /* BLOCO */
-    for (let y = 0; y < WORLD_H; y++) {
-        for (let x = 0; x < WORLD_W; x++) {
-            if (world[y][x]) {
-                ctx.fillStyle = textures[world[y][x]];
-                ctx.fillRect(x*TILE - camX, y*TILE - camY, TILE, TILE);
-                ctx.strokeStyle = "rgba(0,0,0,0.2)";
-                ctx.strokeRect(x*TILE - camX, y*TILE - camY, TILE, TILE);
+    for(let y=0;y<WORLD_H;y++){
+        for(let x=0;x<WORLD_W;x++){
+            let b=world[y][x];
+            if(b){
+                ctx.drawImage(images[b],x*TILE-camX,y*TILE-camY,TILE,TILE);
             }
         }
     }
-
-    /* STEVE */
-    ctx.fillStyle = "#00A2FF"; // camisa
-    ctx.fillRect(player.x - camX, player.y - camY + 12, player.w, 20);
-    ctx.fillStyle = "#F1C27D"; // cabeça
-    ctx.fillRect(player.x - camX, player.y - camY, player.w, 12);
-    ctx.fillStyle = "#1E1E1E"; // pernas
-    ctx.fillRect(player.x - camX, player.y - camY + 32, player.w, 8);
+    ctx.drawImage(images.player,player.x-camX,player.y-camY,32,48);
 }
-
 update();
 </script>
+
 </body>
 </html>
