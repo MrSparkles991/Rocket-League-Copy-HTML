@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rocket Web Mobile</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
+        canvas { display: block; }
+        
+        /* Interface Mobile */
+        #ui {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            pointer-events: none;
+            text-shadow: 2px 2px 4px #000;
+        }
+        
+        #joystick-zone {
+            position: absolute;
+            bottom: 40px;
+            left: 40px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            touch-action: none;
+        }
+
+        #jump-btn {
+            position: absolute;
+            bottom: 60px;
+            right: 40px;
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>ROCKET WEB</h1>
+        <p>Use o joystick para dirigir e o botão para pular</p>
+    </div>
+
+    <div id="joystick-zone"></div>
+    <div id="jump-btn">PULAR</div>
+
+    <script type="module">
+        import * as THREE from 'https://cdn.skypack.dev/three@0.132.2';
+        import * as CANNON from 'https://cdn.skypack.dev/cannon-es';
+
+        // --- CONFIGURAÇÃO INICIAL ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb); // Céu azul
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const world = new CANNON.World();
+        world.gravity.set(0, -9.82, 0);
+
+        // --- LUZES ---
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(10, 20, 10);
+        light.castShadow = true;
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040));
+
+        // --- MATERIAIS ---
+        const groundMat = new THREE.MeshStandardMaterial({ color: 0x228b22 });
+        const ballMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const carMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+
+        // --- CHÃO (CAMPO) ---
+        const groundSize = { x: 60, z: 100 };
+        const groundGeo = new THREE.PlaneGeometry(groundSize.x, groundSize.z);
+        const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+        groundMesh.rotation.x = -Math.PI / 2;
+        groundMesh.receiveShadow = true;
+        scene.add(groundMesh);
+
+        const groundBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
+        groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+        world.addBody(groundBody);
+
+        // --- BOLA ---
+        const ballRadius = 1.5;
+        const ballGeo = new THREE.SphereGeometry(ballRadius, 32, 32);
+        const ballMesh = new THREE.Mesh(ballGeo, ballMat);
+        ballMesh.castShadow = true;
+        scene.add(ballMesh);
+
+        const ballBody = new CANNON.Body({ 
+            mass: 0.8, 
+            shape: new CANNON.Sphere(ballRadius),
+            material: new CANNON.Material({ restitution: 0.9 }) // Pula bastante
+        });
+        ballBody.position.set(0, 5, 0);
+        world.addBody(ballBody);
+
+        // --- CARRO ---
+        const carGeo = new THREE.BoxGeometry(2, 1, 4);
+        const carMesh = new THREE.Mesh(carGeo, carMat);
+        carMesh.castShadow = true;
+        scene.add(carMesh);
+
+        const carBody = new CANNON.Body({ mass: 5, shape: new CANNON.Box(new CANNON.Vec3(1, 0.5, 2)) });
+        carBody.position.set(0, 2, 20);
+        world.addBody(carBody);
+
+        // --- CONTROLES ---
+        let inputX = 0;
+        let inputZ = 0;
+        const moveSpeed = 40;
+
+        // Joystick Simples
+        const joyZone = document.getElementById('joystick-zone');
+        joyZone.addEventListener('touchmove', (e) => {
+            const touch = e.touches[0];
+            const rect = joyZone.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            inputX = (touch.clientX - centerX) / 50;
+            inputZ = (touch.clientY - centerY) / 50;
+        });
+        joyZone.addEventListener('touchend', () => { inputX = 0; inputZ = 0; });
+
+        // Pulo
+        document.getElementById('jump-btn').addEventListener('touchstart', () => {
+            if (Math.abs(carBody.velocity.y) < 0.1) {
+                carBody.applyImpulse(new CANNON.Vec3(0, 25, 0));
+            }
+        });
+
+        // Suporte a Teclado (PC)
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp' || e.key === 'w') inputZ = -1;
+            if (e.key === 'ArrowDown' || e.key === 's') inputZ = 1;
+            if (e.key === 'ArrowLeft' || e.key === 'a') inputX = -1;
+            if (e.key === 'ArrowRight' || e.key === 'd') inputX = 1;
+            if (e.key === ' ') carBody.applyImpulse(new CANNON.Vec3(0, 25, 0));
+        });
+        window.addEventListener('keyup', () => { inputX = 0; inputZ = 0; });
+
+        // --- LOOP DE ANIMAÇÃO ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Física
+            world.fixedStep();
+
+            // Movimento do Carro
+            const force = new CANNON.Vec3(-inputX * moveSpeed, 0, -inputZ * moveSpeed);
+            carBody.applyForce(force, carBody.position);
+            
+            // Rotacionar carro para direção do movimento
+            if (Math.abs(inputX) > 0.1 || Math.abs(inputZ) > 0.1) {
+                carBody.quaternion.setFromEuler(0, Math.atan2(-inputX, -inputZ), 0);
+            }
+
+            // Sincronizar Gráficos com Física
+            carMesh.position.copy(carBody.position);
+            carMesh.quaternion.copy(carBody.quaternion);
+            ballMesh.position.copy(ballBody.position);
+            ballMesh.quaternion.copy(ballBody.quaternion);
+
+            // Câmera segue o carro
+            camera.position.set(carBody.position.x, carBody.position.y + 8, carBody.position.z + 15);
+            camera.lookAt(carBody.position);
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
