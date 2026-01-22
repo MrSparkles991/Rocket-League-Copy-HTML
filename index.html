@@ -1,198 +1,219 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rocket Web Mobile</title>
-    <style>
-        body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
-        canvas { display: block; }
-        
-        /* Interface Mobile */
-        #ui {
-            position: absolute;
-            top: 10px;
-            width: 100%;
-            text-align: center;
-            color: white;
-            pointer-events: none;
-            text-shadow: 2px 2px 4px #000;
-        }
-        
-        #joystick-zone {
-            position: absolute;
-            bottom: 40px;
-            left: 40px;
-            width: 120px;
-            height: 120px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            touch-action: none;
-        }
+<meta charset="UTF-8">
+<title>Último Turno</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
-        #jump-btn {
-            position: absolute;
-            bottom: 60px;
-            right: 40px;
-            width: 80px;
-            height: 80px;
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            user-select: none;
-        }
-    </style>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; font-family: monospace; }
+body { background:#000; overflow:hidden; color:#fff; }
+
+/* ===== JOGO ===== */
+#game {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    background:#000;
+}
+
+/* ===== MAPA ===== */
+#map {
+    position:absolute;
+    width:2000px;
+    height:2000px;
+    background:
+        repeating-linear-gradient(90deg,#2a2a2a 0,#2a2a2a 80px,#1f1f1f 80px,#1f1f1f 160px),
+        repeating-linear-gradient(0deg,#333 0,#333 80px,#262626 80px,#262626 160px);
+}
+
+/* ===== PRATELEIRAS ===== */
+.shelf {
+    position:absolute;
+    width:280px;
+    height:60px;
+    background:#111;
+    border:2px solid #555;
+}
+
+/* ===== PLAYER ===== */
+#player {
+    position:absolute;
+    width:32px;
+    height:32px;
+    background:#fff;
+    border-radius:4px;
+    box-shadow:0 0 15px rgba(255,255,255,0.5);
+}
+
+/* ===== ENTIDADE ===== */
+#entity {
+    position:absolute;
+    width:40px;
+    height:40px;
+    background:rgba(255,0,0,0.35);
+    border-radius:50%;
+    filter:blur(6px);
+    display:none;
+}
+
+/* ===== ESCURIDÃO ===== */
+#darkness {
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    background:radial-gradient(circle at center, transparent 130px, rgba(0,0,0,0.95) 320px);
+}
+
+/* ===== TEXTO ===== */
+#message {
+    position:fixed;
+    bottom:15px;
+    width:100%;
+    text-align:center;
+    opacity:0.85;
+}
+
+/* ===== JOYSTICK ===== */
+#joystick {
+    position:fixed;
+    left:20px;
+    bottom:20px;
+    width:120px;
+    height:120px;
+    border-radius:50%;
+    background:rgba(255,255,255,0.1);
+    touch-action:none;
+}
+
+#stick {
+    position:absolute;
+    left:40px;
+    top:40px;
+    width:40px;
+    height:40px;
+    border-radius:50%;
+    background:rgba(255,255,255,0.6);
+}
+
+/* ===== BOTÃO E ===== */
+#btnE {
+    position:fixed;
+    right:30px;
+    bottom:50px;
+    width:70px;
+    height:70px;
+    border-radius:50%;
+    background:rgba(255,255,255,0.15);
+    border:2px solid #999;
+    color:#fff;
+    font-size:22px;
+}
+</style>
 </head>
+
 <body>
 
-    <div id="ui">
-        <h1>ROCKET WEB</h1>
-        <p>Use o joystick para dirigir e o botão para pular</p>
-    </div>
+<div id="game">
+    <div id="map"></div>
+    <div id="player"></div>
+    <div id="entity"></div>
+    <div id="darkness"></div>
+</div>
 
-    <div id="joystick-zone"></div>
-    <div id="jump-btn">PULAR</div>
+<div id="message">Último turno… algo está errado.</div>
 
-    <script type="module">
-        import * as THREE from 'https://cdn.skypack.dev/three@0.132.2';
-        import * as CANNON from 'https://cdn.skypack.dev/cannon-es';
+<div id="joystick"><div id="stick"></div></div>
+<button id="btnE">E</button>
 
-        // --- CONFIGURAÇÃO INICIAL ---
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87ceeb); // Céu azul
+<script>
+/* ===== ELEMENTOS ===== */
+const player = document.getElementById("player");
+const map = document.getElementById("map");
+const entity = document.getElementById("entity");
+const message = document.getElementById("message");
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true;
-        document.body.appendChild(renderer.domElement);
+/* ===== PLAYER ===== */
+let px = 1000, py = 1000;
+let sanity = 100;
 
-        const world = new CANNON.World();
-        world.gravity.set(0, -9.82, 0);
+/* ===== PRATELEIRAS ===== */
+for(let i=0;i<12;i++){
+    let s=document.createElement("div");
+    s.className="shelf";
+    s.style.left=Math.random()*1700+"px";
+    s.style.top=Math.random()*1700+"px";
+    map.appendChild(s);
+}
 
-        // --- LUZES ---
-        const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(10, 20, 10);
-        light.castShadow = true;
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0x404040));
+/* ===== TECLADO ===== */
+const keys = {};
+addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
+addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
 
-        // --- MATERIAIS ---
-        const groundMat = new THREE.MeshStandardMaterial({ color: 0x228b22 });
-        const ballMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
-        const carMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+/* ===== JOYSTICK ===== */
+const joystick = document.getElementById("joystick");
+const stick = document.getElementById("stick");
+let joyX=0, joyY=0, dragging=false;
 
-        // --- CHÃO (CAMPO) ---
-        const groundSize = { x: 60, z: 100 };
-        const groundGeo = new THREE.PlaneGeometry(groundSize.x, groundSize.z);
-        const groundMesh = new THREE.Mesh(groundGeo, groundMat);
-        groundMesh.rotation.x = -Math.PI / 2;
-        groundMesh.receiveShadow = true;
-        scene.add(groundMesh);
+joystick.addEventListener("touchstart",e=>dragging=true);
+joystick.addEventListener("touchend",()=>{
+    dragging=false; joyX=joyY=0;
+    stick.style.left="40px"; stick.style.top="40px";
+});
+joystick.addEventListener("touchmove",e=>{
+    if(!dragging) return;
+    let r=joystick.getBoundingClientRect();
+    let x=e.touches[0].clientX-r.left-60;
+    let y=e.touches[0].clientY-r.top-60;
+    let d=Math.hypot(x,y);
+    if(d>40){ x*=40/d; y*=40/d; }
+    joyX=x/40; joyY=y/40;
+    stick.style.left=x+60-20+"px";
+    stick.style.top=y+60-20+"px";
+});
 
-        const groundBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
-        groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-        world.addBody(groundBody);
+/* ===== INTERAÇÃO ===== */
+document.getElementById("btnE").onclick=()=>interact();
+addEventListener("keydown",e=>{ if(e.key.toLowerCase()=="e") interact(); });
 
-        // --- BOLA ---
-        const ballRadius = 1.5;
-        const ballGeo = new THREE.SphereGeometry(ballRadius, 32, 32);
-        const ballMesh = new THREE.Mesh(ballGeo, ballMat);
-        ballMesh.castShadow = true;
-        scene.add(ballMesh);
+function interact(){
+    sanity-=5;
+    message.innerText="Você sente que está sendo observado…";
+}
 
-        const ballBody = new CANNON.Body({ 
-            mass: 0.8, 
-            shape: new CANNON.Sphere(ballRadius),
-            material: new CANNON.Material({ restitution: 0.9 }) // Pula bastante
-        });
-        ballBody.position.set(0, 5, 0);
-        world.addBody(ballBody);
+/* ===== LOOP ===== */
+function update(){
+    let speed=2.5;
+    if(keys["w"]) py-=speed;
+    if(keys["s"]) py+=speed;
+    if(keys["a"]) px-=speed;
+    if(keys["d"]) px+=speed;
 
-        // --- CARRO ---
-        const carGeo = new THREE.BoxGeometry(2, 1, 4);
-        const carMesh = new THREE.Mesh(carGeo, carMat);
-        carMesh.castShadow = true;
-        scene.add(carMesh);
+    px+=joyX*speed*1.5;
+    py+=joyY*speed*1.5;
 
-        const carBody = new CANNON.Body({ mass: 5, shape: new CANNON.Box(new CANNON.Vec3(1, 0.5, 2)) });
-        carBody.position.set(0, 2, 20);
-        world.addBody(carBody);
+    player.style.left=px+"px";
+    player.style.top=py+"px";
+    map.style.transform=`translate(${-px+innerWidth/2}px,${-py+innerHeight/2}px)`;
 
-        // --- CONTROLES ---
-        let inputX = 0;
-        let inputZ = 0;
-        const moveSpeed = 40;
+    /* ENTIDADE */
+    if(Math.random()<0.003){
+        entity.style.display="block";
+        entity.style.left=px+(Math.random()*400-200)+"px";
+        entity.style.top=py+(Math.random()*400-200)+"px";
+        sanity-=10;
+        setTimeout(()=>entity.style.display="none",500);
+    }
 
-        // Joystick Simples
-        const joyZone = document.getElementById('joystick-zone');
-        joyZone.addEventListener('touchmove', (e) => {
-            const touch = e.touches[0];
-            const rect = joyZone.getBoundingClientRect();
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top + rect.height / 2;
-            inputX = (touch.clientX - centerX) / 50;
-            inputZ = (touch.clientY - centerY) / 50;
-        });
-        joyZone.addEventListener('touchend', () => { inputX = 0; inputZ = 0; });
+    if(sanity<=0){
+        message.innerText="Você nunca saiu do supermercado.";
+    }
 
-        // Pulo
-        document.getElementById('jump-btn').addEventListener('touchstart', () => {
-            if (Math.abs(carBody.velocity.y) < 0.1) {
-                carBody.applyImpulse(new CANNON.Vec3(0, 25, 0));
-            }
-        });
+    requestAnimationFrame(update);
+}
+update();
+</script>
 
-        // Suporte a Teclado (PC)
-        window.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowUp' || e.key === 'w') inputZ = -1;
-            if (e.key === 'ArrowDown' || e.key === 's') inputZ = 1;
-            if (e.key === 'ArrowLeft' || e.key === 'a') inputX = -1;
-            if (e.key === 'ArrowRight' || e.key === 'd') inputX = 1;
-            if (e.key === ' ') carBody.applyImpulse(new CANNON.Vec3(0, 25, 0));
-        });
-        window.addEventListener('keyup', () => { inputX = 0; inputZ = 0; });
-
-        // --- LOOP DE ANIMAÇÃO ---
-        function animate() {
-            requestAnimationFrame(animate);
-
-            // Física
-            world.fixedStep();
-
-            // Movimento do Carro
-            const force = new CANNON.Vec3(-inputX * moveSpeed, 0, -inputZ * moveSpeed);
-            carBody.applyForce(force, carBody.position);
-            
-            // Rotacionar carro para direção do movimento
-            if (Math.abs(inputX) > 0.1 || Math.abs(inputZ) > 0.1) {
-                carBody.quaternion.setFromEuler(0, Math.atan2(-inputX, -inputZ), 0);
-            }
-
-            // Sincronizar Gráficos com Física
-            carMesh.position.copy(carBody.position);
-            carMesh.quaternion.copy(carBody.quaternion);
-            ballMesh.position.copy(ballBody.position);
-            ballMesh.quaternion.copy(ballBody.quaternion);
-
-            // Câmera segue o carro
-            camera.position.set(carBody.position.x, carBody.position.y + 8, carBody.position.z + 15);
-            camera.lookAt(carBody.position);
-
-            renderer.render(scene, camera);
-        }
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        animate();
-    </script>
 </body>
 </html>
