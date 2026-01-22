@@ -2,218 +2,182 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Último Turno</title>
+<title>Minecraft 2D</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-
 <style>
-* { margin:0; padding:0; box-sizing:border-box; font-family: monospace; }
-body { background:#000; overflow:hidden; color:#fff; }
-
-/* ===== JOGO ===== */
-#game {
-    position: relative;
-    width: 100vw;
-    height: 100vh;
-    background:#000;
+body {
+    margin: 0;
+    background: #87CEEB;
+    overflow: hidden;
 }
-
-/* ===== MAPA ===== */
-#map {
-    position:absolute;
-    width:2000px;
-    height:2000px;
-    background:
-        repeating-linear-gradient(90deg,#2a2a2a 0,#2a2a2a 80px,#1f1f1f 80px,#1f1f1f 160px),
-        repeating-linear-gradient(0deg,#333 0,#333 80px,#262626 80px,#262626 160px);
+canvas {
+    display: block;
+    image-rendering: pixelated;
 }
-
-/* ===== PRATELEIRAS ===== */
-.shelf {
-    position:absolute;
-    width:280px;
-    height:60px;
-    background:#111;
-    border:2px solid #555;
+#ui {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
 }
-
-/* ===== PLAYER ===== */
-#player {
-    position:absolute;
-    width:32px;
-    height:32px;
-    background:#fff;
-    border-radius:4px;
-    box-shadow:0 0 15px rgba(255,255,255,0.5);
-}
-
-/* ===== ENTIDADE ===== */
-#entity {
-    position:absolute;
-    width:40px;
-    height:40px;
-    background:rgba(255,0,0,0.35);
-    border-radius:50%;
-    filter:blur(6px);
-    display:none;
-}
-
-/* ===== ESCURIDÃO ===== */
-#darkness {
-    position:absolute;
-    inset:0;
-    pointer-events:none;
-    background:radial-gradient(circle at center, transparent 130px, rgba(0,0,0,0.95) 320px);
-}
-
-/* ===== TEXTO ===== */
-#message {
-    position:fixed;
-    bottom:15px;
-    width:100%;
-    text-align:center;
-    opacity:0.85;
-}
-
-/* ===== JOYSTICK ===== */
-#joystick {
-    position:fixed;
-    left:20px;
-    bottom:20px;
-    width:120px;
-    height:120px;
-    border-radius:50%;
-    background:rgba(255,255,255,0.1);
-    touch-action:none;
-}
-
-#stick {
-    position:absolute;
-    left:40px;
-    top:40px;
-    width:40px;
-    height:40px;
-    border-radius:50%;
-    background:rgba(255,255,255,0.6);
-}
-
-/* ===== BOTÃO E ===== */
-#btnE {
-    position:fixed;
-    right:30px;
-    bottom:50px;
-    width:70px;
-    height:70px;
-    border-radius:50%;
-    background:rgba(255,255,255,0.15);
-    border:2px solid #999;
-    color:#fff;
-    font-size:22px;
+.btn {
+    width: 60px;
+    height: 60px;
+    background: rgba(0,0,0,0.4);
+    color: white;
+    font-size: 20px;
+    border-radius: 10px;
+    text-align: center;
+    line-height: 60px;
+    user-select: none;
 }
 </style>
 </head>
-
 <body>
 
-<div id="game">
-    <div id="map"></div>
-    <div id="player"></div>
-    <div id="entity"></div>
-    <div id="darkness"></div>
+<canvas id="game"></canvas>
+
+<div id="ui">
+    <div class="btn" id="left">◀</div>
+    <div class="btn" id="jump">▲</div>
+    <div class="btn" id="right">▶</div>
 </div>
 
-<div id="message">Último turno… algo está errado.</div>
-
-<div id="joystick"><div id="stick"></div></div>
-<button id="btnE">E</button>
-
 <script>
-/* ===== ELEMENTOS ===== */
-const player = document.getElementById("player");
-const map = document.getElementById("map");
-const entity = document.getElementById("entity");
-const message = document.getElementById("message");
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+canvas.width = innerWidth;
+canvas.height = innerHeight;
 
-/* ===== PLAYER ===== */
-let px = 1000, py = 1000;
-let sanity = 100;
+const TILE = 32;
+const WORLD_W = 200;
+const WORLD_H = 100;
 
-/* ===== PRATELEIRAS ===== */
-for(let i=0;i<12;i++){
-    let s=document.createElement("div");
-    s.className="shelf";
-    s.style.left=Math.random()*1700+"px";
-    s.style.top=Math.random()*1700+"px";
-    map.appendChild(s);
+/* ===== TEXTURAS ===== */
+const textures = {
+    grass: "#3CB043",
+    dirt: "#8B4513",
+    stone: "#777"
+};
+
+/* ===== MUNDO ===== */
+const world = [];
+for (let y = 0; y < WORLD_H; y++) {
+    world[y] = [];
+    for (let x = 0; x < WORLD_W; x++) {
+        if (y > 50) world[y][x] = "stone";
+        else if (y === 50) world[y][x] = "grass";
+        else if (y > 45) world[y][x] = "dirt";
+        else world[y][x] = null;
+    }
 }
 
-/* ===== TECLADO ===== */
+/* ===== PLAYER (STEVE 2D) ===== */
+const player = {
+    x: 100,
+    y: 0,
+    w: 24,
+    h: 32,
+    vx: 0,
+    vy: 0,
+    onGround: false
+};
+
+/* ===== INPUT ===== */
 const keys = {};
-addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
-addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
+addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
-/* ===== JOYSTICK ===== */
-const joystick = document.getElementById("joystick");
-const stick = document.getElementById("stick");
-let joyX=0, joyY=0, dragging=false;
+/* ===== MOBILE ===== */
+document.getElementById("left").ontouchstart = () => keys["a"] = true;
+document.getElementById("left").ontouchend = () => keys["a"] = false;
+document.getElementById("right").ontouchstart = () => keys["d"] = true;
+document.getElementById("right").ontouchend = () => keys["d"] = false;
+document.getElementById("jump").ontouchstart = () => {
+    if (player.onGround) player.vy = -10;
+};
 
-joystick.addEventListener("touchstart",e=>dragging=true);
-joystick.addEventListener("touchend",()=>{
-    dragging=false; joyX=joyY=0;
-    stick.style.left="40px"; stick.style.top="40px";
+/* ===== MOUSE ===== */
+canvas.addEventListener("mousedown", e => {
+    const wx = Math.floor((e.clientX + camX) / TILE);
+    const wy = Math.floor((e.clientY + camY) / TILE);
+    if (e.button === 0) world[wy][wx] = null;
 });
-joystick.addEventListener("touchmove",e=>{
-    if(!dragging) return;
-    let r=joystick.getBoundingClientRect();
-    let x=e.touches[0].clientX-r.left-60;
-    let y=e.touches[0].clientY-r.top-60;
-    let d=Math.hypot(x,y);
-    if(d>40){ x*=40/d; y*=40/d; }
-    joyX=x/40; joyY=y/40;
-    stick.style.left=x+60-20+"px";
-    stick.style.top=y+60-20+"px";
+canvas.addEventListener("contextmenu", e => {
+    e.preventDefault();
+    const wx = Math.floor((e.clientX + camX) / TILE);
+    const wy = Math.floor((e.clientY + camY) / TILE);
+    world[wy][wx] = "dirt";
 });
 
-/* ===== INTERAÇÃO ===== */
-document.getElementById("btnE").onclick=()=>interact();
-addEventListener("keydown",e=>{ if(e.key.toLowerCase()=="e") interact(); });
+/* ===== CÂMERA ===== */
+let camX = 0, camY = 0;
 
-function interact(){
-    sanity-=5;
-    message.innerText="Você sente que está sendo observado…";
+/* ===== COLISÃO ===== */
+function solid(x, y) {
+    return world[y] && world[y][x];
 }
 
 /* ===== LOOP ===== */
-function update(){
-    let speed=2.5;
-    if(keys["w"]) py-=speed;
-    if(keys["s"]) py+=speed;
-    if(keys["a"]) px-=speed;
-    if(keys["d"]) px+=speed;
+function update() {
+    /* MOVIMENTO */
+    if (keys["a"]) player.vx = -3;
+    else if (keys["d"]) player.vx = 3;
+    else player.vx *= 0.8;
 
-    px+=joyX*speed*1.5;
-    py+=joyY*speed*1.5;
+    if (keys["w"] && player.onGround) player.vy = -10;
 
-    player.style.left=px+"px";
-    player.style.top=py+"px";
-    map.style.transform=`translate(${-px+innerWidth/2}px,${-py+innerHeight/2}px)`;
+    player.vy += 0.5;
 
-    /* ENTIDADE */
-    if(Math.random()<0.003){
-        entity.style.display="block";
-        entity.style.left=px+(Math.random()*400-200)+"px";
-        entity.style.top=py+(Math.random()*400-200)+"px";
-        sanity-=10;
-        setTimeout(()=>entity.style.display="none",500);
-    }
+    /* X */
+    player.x += player.vx;
+    if (solid(Math.floor(player.x / TILE), Math.floor(player.y / TILE)))
+        player.x -= player.vx;
 
-    if(sanity<=0){
-        message.innerText="Você nunca saiu do supermercado.";
-    }
+    /* Y */
+    player.y += player.vy;
+    if (solid(Math.floor(player.x / TILE), Math.floor((player.y + player.h) / TILE))) {
+        player.y = Math.floor((player.y + player.h) / TILE) * TILE - player.h;
+        player.vy = 0;
+        player.onGround = true;
+    } else player.onGround = false;
 
+    /* CÂMERA */
+    camX = player.x - canvas.width / 2;
+    camY = player.y - canvas.height / 2;
+
+    draw();
     requestAnimationFrame(update);
 }
+
+/* ===== DESENHO ===== */
+function draw() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    /* BLOCO */
+    for (let y = 0; y < WORLD_H; y++) {
+        for (let x = 0; x < WORLD_W; x++) {
+            if (world[y][x]) {
+                ctx.fillStyle = textures[world[y][x]];
+                ctx.fillRect(x*TILE - camX, y*TILE - camY, TILE, TILE);
+                ctx.strokeStyle = "rgba(0,0,0,0.2)";
+                ctx.strokeRect(x*TILE - camX, y*TILE - camY, TILE, TILE);
+            }
+        }
+    }
+
+    /* STEVE */
+    ctx.fillStyle = "#00A2FF"; // camisa
+    ctx.fillRect(player.x - camX, player.y - camY + 12, player.w, 20);
+    ctx.fillStyle = "#F1C27D"; // cabeça
+    ctx.fillRect(player.x - camX, player.y - camY, player.w, 12);
+    ctx.fillStyle = "#1E1E1E"; // pernas
+    ctx.fillRect(player.x - camX, player.y - camY + 32, player.w, 8);
+}
+
 update();
 </script>
-
 </body>
 </html>
